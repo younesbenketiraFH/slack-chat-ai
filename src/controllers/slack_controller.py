@@ -2,7 +2,6 @@
 Controller layer for handling Slack event routes.
 """
 
-import json
 from typing import Dict, Any
 
 from fastapi import APIRouter, Request
