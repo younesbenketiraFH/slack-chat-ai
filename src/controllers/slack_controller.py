@@ -21,7 +21,6 @@ slack_service = SlackService(slack_repository, openai_service)
 async def handle_slack_events(request: Request) -> Dict[str, Any]:
     """Handle incoming Slack events."""
     raw_data = await request.json()
-    print(f"Received event: {json.dumps(raw_data, indent=2)}")
     
     event_type = raw_data.get("type", "")
     return await slack_service.handle_event(event_type, raw_data)

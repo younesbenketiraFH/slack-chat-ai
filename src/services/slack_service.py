@@ -3,8 +3,10 @@ Service layer for Slack operations.
 """
 
 import ssl
-from typing import List, Dict, Any
+import json
+from typing import List, Dict, Any, Set
 from fastapi import HTTPException
+from datetime import datetime, timedelta
 
 import certifi
 from slack_sdk import WebClient
@@ -20,6 +22,29 @@ class SlackService:
         self.client = WebClient(ssl=ssl_context)
         self.slack_repository = slack_repository
         self.openai_service = openai_service
+        # Store processed event IDs with timestamps
+        self.processed_events: Dict[str, datetime] = {}
+        # Clean up interval (5 minutes)
+        self.cleanup_interval = timedelta(minutes=5)
+
+    def _clean_old_events(self) -> None:
+        """Clean up old event IDs to prevent memory growth."""
+        current_time = datetime.now()
+        self.processed_events = {
+            event_id: timestamp 
+            for event_id, timestamp in self.processed_events.items()
+            if current_time - timestamp < self.cleanup_interval
+        }
+
+    def _is_duplicate_event(self, event_id: str) -> bool:
+        """Check if an event has already been processed."""
+        if event_id in self.processed_events:
+            print(f"Duplicate event: {event_id}")
+            return True
+        self.processed_events[event_id] = datetime.now()
+        self._clean_old_events()  # Periodically clean up old events
+        print(f"Processed event: {event_id}")
+        return False
 
     async def fetch_messages(self, channel_id: str, limit: int = 20) -> str:
         """Fetch recent messages from a Slack channel."""
@@ -54,14 +79,27 @@ class SlackService:
         user_question = event_data.event.text.strip()
         
         try:
-            # Fetch messages for context
-            context = await self.slack_repository.fetch_messages(channel_id)
-            
-            # Generate response using OpenAI
+            all_conversations = await self.slack_repository.list_conversations()
+
+            system_prompt = "You are a helpful AI assistant in a Slack workspace. "
+            system_prompt += "You will answer questions about the conversations in the Slack workspace. "
+            # Determine which conversation to use for context based on user question
             response_text = await self.openai_service.generate_response(
+                system_prompt=system_prompt,
                 prompt=user_question,
-                context=context
+                context=all_conversations
             )
+
+            print(f"Response Text: {response_text}")
+
+            # Fetch messages for context
+            # context = await self.slack_repository.fetch_messages(channel_id)
+            
+            # # Generate response using OpenAI
+            # response_text = await self.openai_service.generate_response(
+            #     prompt=user_question,
+            #     context=context
+            # )
             
             # Send response back to Slack
             self.slack_repository.send_message(
@@ -79,9 +117,15 @@ class SlackService:
             return await self.handle_url_verification(event_data)
             
         if event_type == "event_callback":
+            # Check for duplicate events
+            event_id = event_data.get("event_id")
+            if event_id and self._is_duplicate_event(event_id):
+                return {"status": "ok", "message": "Duplicate event"}
+            
             event_wrapper = SlackEventWrapper(**event_data)
             
             if event_wrapper.event.type == "app_mention":
+                # Process the event asynchronously
                 await self.handle_app_mention(event_wrapper)
             
             return {"status": "ok"}
