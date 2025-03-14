@@ -4,9 +4,8 @@ Service layer for Slack operations.
 
 import ssl
 import json
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any
 from fastapi import HTTPException
-from datetime import datetime, timedelta
 
 import certifi
 from slack_sdk import WebClient
@@ -22,29 +21,6 @@ class SlackService:
         self.client = WebClient(ssl=ssl_context)
         self.slack_repository = slack_repository
         self.openai_service = openai_service
-        # Store processed event IDs with timestamps
-        self.processed_events: Dict[str, datetime] = {}
-        # Clean up interval (5 minutes)
-        self.cleanup_interval = timedelta(minutes=5)
-
-    def _clean_old_events(self) -> None:
-        """Clean up old event IDs to prevent memory growth."""
-        current_time = datetime.now()
-        self.processed_events = {
-            event_id: timestamp 
-            for event_id, timestamp in self.processed_events.items()
-            if current_time - timestamp < self.cleanup_interval
-        }
-
-    def _is_duplicate_event(self, event_id: str) -> bool:
-        """Check if an event has already been processed."""
-        if event_id in self.processed_events:
-            print(f"Duplicate event: {event_id}")
-            return True
-        self.processed_events[event_id] = datetime.now()
-        self._clean_old_events()  # Periodically clean up old events
-        print(f"Processed event: {event_id}")
-        return False
 
     async def fetch_messages(self, channel_id: str, limit: int = 20) -> str:
         """Fetch recent messages from a Slack channel."""
@@ -83,6 +59,12 @@ class SlackService:
 
             system_prompt = "You are a helpful AI assistant in a Slack workspace. "
             system_prompt += "You will answer questions about the conversations in the Slack workspace. "
+            system_prompt += "You will first understand which user is asking the question about and you will return ONLY the conversation id of the user that the question is about. "
+            system_prompt += "You will return the conversation id in the format of '<conversation_id>' "
+            system_prompt += "You will not return anything else. "
+            system_prompt += "example prompt: 'Can you tell me about the conversation with <user_name>?' "
+            system_prompt += "example response: Conversation ID: C98HD23QZRB"
+
             # Determine which conversation to use for context based on user question
             response_text = await self.openai_service.generate_response(
                 system_prompt=system_prompt,
@@ -90,17 +72,35 @@ class SlackService:
                 context=all_conversations
             )
 
+            # Get the conversation id from the response text
+            print(f"Response Text: {response_text}")
+            if "conversation id: " in response_text.lower():
+                conversation_id = response_text.lower().split("conversation id: ")[1].strip()
+            else:
+                conversation_id = response_text
+
+            print(f"Conversation ID: {conversation_id}")
+
+            # Get the conversation messages
+            conversation_messages = await self.slack_repository.fetch_messages(conversation_id)
+
+            print(f"Conversation Messages: {conversation_messages}")
+
+            # Get the response from the OpenAI service
+            system_prompt = "You are a helpful AI assistant in a Slack workspace. "
+            system_prompt += "You will answer questions about the conversations in the Slack workspace. "
+            system_prompt += "You will use the conversation messages to answer the user's question. "
+            system_prompt += "Ignore trying to find out which conversation the user is asking about. assume the user is asking about the conversation that you already can see. "
+            system_prompt += "the conversation messages are in the format of example: <@U08J2SADPH6> Summarize the all-ai-bot-testing channel if you may. "
+            system_prompt += "You will respond in bullet points"
+            response_text = await self.openai_service.generate_response(
+                system_prompt=system_prompt,
+                prompt=user_question,
+                context=conversation_messages
+            )
+
             print(f"Response Text: {response_text}")
 
-            # Fetch messages for context
-            # context = await self.slack_repository.fetch_messages(channel_id)
-            
-            # # Generate response using OpenAI
-            # response_text = await self.openai_service.generate_response(
-            #     prompt=user_question,
-            #     context=context
-            # )
-            
             # Send response back to Slack
             self.slack_repository.send_message(
                 channel_id=channel_id,
@@ -109,25 +109,4 @@ class SlackService:
             )
         except Exception as e:
             print(f"Error handling app mention: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
-
-    async def handle_event(self, event_type: str, event_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle different types of Slack events."""
-        if event_type == "url_verification":
-            return await self.handle_url_verification(event_data)
-            
-        if event_type == "event_callback":
-            # Check for duplicate events
-            event_id = event_data.get("event_id")
-            if event_id and self._is_duplicate_event(event_id):
-                return {"status": "ok", "message": "Duplicate event"}
-            
-            event_wrapper = SlackEventWrapper(**event_data)
-            
-            if event_wrapper.event.type == "app_mention":
-                # Process the event asynchronously
-                await self.handle_app_mention(event_wrapper)
-            
-            return {"status": "ok"}
-            
-        return {"status": "ok"} 
+            raise HTTPException(status_code=500, detail=str(e)) 

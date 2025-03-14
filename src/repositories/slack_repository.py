@@ -46,6 +46,7 @@ class SlackRepository:
             
             conversations = []
             for channel in response["channels"]:
+                print(f"Channel: {json.dumps(channel, indent=2)}\n\n")
                 # Get members for each conversation
                 try:
                     members_response = self.client.conversations_members(channel=channel["id"])
@@ -70,7 +71,7 @@ class SlackRepository:
                 }
                 conversations.append(conversation_info)
                 
-            # print(f"Conversations List:\n{json.dumps(conversations, indent=2)}")
+            print(f"Conversations List:\n{json.dumps(conversations, indent=2)}")
             return conversations
             
         except SlackApiError as e:
