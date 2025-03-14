@@ -5,11 +5,9 @@ Service layer for Slack operations.
 import ssl
 import json
 from typing import List, Dict, Any
-from fastapi import HTTPException
 
 import certifi
 from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
 
 from src.models.slack_models import SlackEventWrapper, SlackUrlVerificationRequest
 from src.repositories.slack_repository import SlackRepository
@@ -49,64 +47,39 @@ class SlackService:
         verification_data = SlackUrlVerificationRequest(**data)
         return {"challenge": verification_data.challenge}
 
-    async def handle_app_mention(self, event_data: SlackEventWrapper) -> None:
-        """Handle app mention events from Slack."""
+    async def handle_direct_message(self, event_data: SlackEventWrapper) -> None:
+        """Handle direct message events from Slack."""
         channel_id = event_data.event.channel
         user_question = event_data.event.text.strip()
         
-        try:
-            all_conversations = await self.slack_repository.list_conversations()
+        # Example question: "38972 can you give me a summary of what X said?"
+        conversation_id = user_question.split(":")[0]
 
-            system_prompt = "You are a helpful AI assistant in a Slack workspace. "
-            system_prompt += "You will answer questions about the conversations in the Slack workspace. "
-            system_prompt += "You will first understand which user is asking the question about and you will return ONLY the conversation id of the user that the question is about. "
-            system_prompt += "You will return the conversation id in the format of '<conversation_id>' "
-            system_prompt += "You will not return anything else. "
-            system_prompt += "example prompt: 'Can you tell me about the conversation with <user_name>?' "
-            system_prompt += "example response: Conversation ID: C98HD23QZRB"
+        # Get all conversations for context
+        # all_conversations = await self.slack_repository.list_conversations()
+        # conversations_json = json.dumps(all_conversations, indent=2)
+        # # Identify which conversation the user is asking about
+        # conversation_id = await self.openai_service.identify_conversation(
+        #     user_question=user_question,
+        #     conversations_context=conversations_json
+        # )
+        # print(f"Identified Conversation ID: {conversation_id}")
 
-            # Determine which conversation to use for context based on user question
-            response_text = await self.openai_service.generate_response(
-                system_prompt=system_prompt,
-                prompt=user_question,
-                context=all_conversations
-            )
+        # Get the messages from the identified conversation
+        conversation_messages = await self.slack_repository.fetch_messages(conversation_id)
+        print(f"Retrieved messages from conversation: {conversation_messages}")
 
-            # Get the conversation id from the response text
-            print(f"Response Text: {response_text}")
-            if "conversation id: " in response_text.lower():
-                conversation_id = response_text.lower().split("conversation id: ")[1].strip()
-            else:
-                conversation_id = response_text
+        # Generate the final response
+        # final_response = await self.openai_service.analyze_conversation(
+        #     user_question=user_question.split(":")[1],
+        #     conversation_messages=conversation_messages
+        # )
+        final_response = f"Here is the summary of the conversation:"
+        print(f"Final Response: {final_response}")
 
-            print(f"Conversation ID: {conversation_id}")
-
-            # Get the conversation messages
-            conversation_messages = await self.slack_repository.fetch_messages(conversation_id)
-
-            print(f"Conversation Messages: {conversation_messages}")
-
-            # Get the response from the OpenAI service
-            system_prompt = "You are a helpful AI assistant in a Slack workspace. "
-            system_prompt += "You will answer questions about the conversations in the Slack workspace. "
-            system_prompt += "You will use the conversation messages to answer the user's question. "
-            system_prompt += "Ignore trying to find out which conversation the user is asking about. assume the user is asking about the conversation that you already can see. "
-            system_prompt += "the conversation messages are in the format of example: <@U08J2SADPH6> Summarize the all-ai-bot-testing channel if you may. "
-            system_prompt += "You will respond in bullet points"
-            response_text = await self.openai_service.generate_response(
-                system_prompt=system_prompt,
-                prompt=user_question,
-                context=conversation_messages
-            )
-
-            print(f"Response Text: {response_text}")
-
-            # Send response back to Slack
-            self.slack_repository.send_message(
-                channel_id=channel_id,
-                text=response_text,
-                thread_ts=event_data.event.ts
-            )
-        except Exception as e:
-            print(f"Error handling app mention: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e)) 
+        # Send the response back to the user
+        await self.slack_repository.send_message(
+            channel_id=channel_id,
+            text=final_response,
+            thread_ts=event_data.event.ts
+        ) 

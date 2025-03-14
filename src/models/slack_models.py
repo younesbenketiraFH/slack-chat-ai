@@ -13,6 +13,8 @@ class SlackEventType(BaseModel):
     ts: Optional[str] = None
     channel: Optional[str] = None
     event_ts: Optional[str] = None
+    channel_type: Optional[str] = None  # Added for message.im events
+    subtype: Optional[str] = None  # Added to handle message subtypes
 
 class SlackEventWrapper(BaseModel):
     """Wrapper model for Slack events."""
