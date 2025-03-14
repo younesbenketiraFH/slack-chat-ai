@@ -2,7 +2,7 @@
 Main FastAPI application.
 """
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 
 from src.controllers import slack_router
 
