@@ -2,9 +2,11 @@
 Controller layer for handling Slack event routes.
 """
 
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, Optional
 import json
 from urllib.parse import parse_qs
+from aiohttp import ClientSession
+import asyncio
 
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -62,20 +64,23 @@ async def handle_slack_events(request: Request) -> Union[Dict[str, Any], JSONRes
                 }
             
             if command == "/summarize":
-                # Get messages from the channel
-                messages = await slack_repository.fetch_messages(channel_id)
-                
-                # Generate summary using OpenAI
-                summary = await openai_service.analyze_conversation(
-                    user_question="Please summarize these messages",
-                    conversation_messages=messages
-                )
-                
-                # Send response back to Slack
-                return {
-                    "response_type": "in_channel",  # Make the response visible to all channel members
-                    "text": summary
+                # ✅ 1. **Immediately acknowledge Slack** to avoid timeout
+                ack_response = {
+                    "response_type": "ephemeral",
+                    "text": "⏳ Summarizing messages... I'll post the summary soon!"
                 }
+
+                response_url = form_data.get("response_url", [None])[0]
+                if not response_url:
+                    return {
+                        "response_type": "ephemeral",
+                        "text": "Error: No response URL provided"
+                    }
+                
+                asyncio.create_task(handle_summary(channel_id, response_url))
+
+                # Send response back to Slack
+                return ack_response
             
             return {
                 "response_type": "ephemeral",  # Only visible to the user who triggered the command
@@ -128,3 +133,34 @@ async def handle_slack_events(request: Request) -> Union[Dict[str, Any], JSONRes
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+    
+async def handle_summary(channel_id: str, response_url: str) -> None:
+    """Generate a summary and send it to the response URL."""
+    try:
+        # Get messages from the channel
+        messages = await slack_repository.fetch_messages(channel_id)
+                
+        # Generate summary using OpenAI
+        summary = await openai_service.analyze_conversation(
+            user_question="Please summarize these messages",
+            conversation_messages=messages
+        )
+
+        # Prepare the response
+        response_payload = {
+            "response_type": "ephemeral",  # Only visible to the user who triggered the command
+            "text": summary
+        }
+
+        # Send the response to the response_url
+        # Import this at the top of the file: from aiohttp import ClientSession
+        async with ClientSession() as session:
+            async with session.post(
+                response_url,
+                json=response_payload,
+                headers={"Content-Type": "application/json"}
+            ) as resp:
+                if resp.status != 200:
+                    print(f"Error sending response to Slack: {await resp.text()}")
+    except Exception as e:
+        print(f"Error in handle_summary: {str(e)}")

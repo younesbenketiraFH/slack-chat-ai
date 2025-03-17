@@ -20,28 +20,6 @@ class SlackService:
         self.slack_repository = slack_repository
         self.openai_service = openai_service
 
-    async def fetch_messages(self, channel_id: str, limit: int = 20) -> str:
-        """Fetch recent messages from a Slack channel."""
-        try:
-            response = self.client.conversations_history(channel=channel_id, limit=limit)
-            messages = [msg["text"] for msg in response["messages"] if "text" in msg]
-            return "\n".join(messages)
-        except SlackApiError as e:
-            print(f"Error fetching messages: {e.response['error']}")
-            raise
-
-    def send_message(self, channel_id: str, text: str, thread_ts: str = None) -> None:
-        """Send a message to a Slack channel."""
-        try:
-            self.client.chat_postMessage(
-                channel=channel_id,
-                text=text,
-                thread_ts=thread_ts
-            )
-        except SlackApiError as e:
-            print(f"Error sending message: {e.response['error']}")
-            raise
-
     async def handle_url_verification(self, data: Dict[str, Any]) -> Dict[str, str]:
         """Handle Slack URL verification challenge."""
         verification_data = SlackUrlVerificationRequest(**data)
@@ -50,6 +28,19 @@ class SlackService:
     async def handle_direct_message(self, event_data: SlackEventWrapper) -> None:
         """Handle direct message events from Slack."""
         channel_id = event_data.event.channel
+
+        if not channel_id:
+            print("No channel ID found in event data")
+            return
+        
+        if not event_data.event.ts:
+            print("No thread timestamp found in event data")
+            return
+        
+        if not event_data.event.text:
+            print("No text found in event data")
+            return
+
         user_question = event_data.event.text.strip()
         
         # Example question: "38972 can you give me a summary of what X said?"

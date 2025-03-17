@@ -32,7 +32,7 @@ class OpenAIService:
         self.max_tokens = 1000
         self.temperature = 0.7
 
-    async def _generate_response(self, system_prompt: str, prompt: str, context: Optional[str] = None) -> str:
+    async def _generate_response(self, system_prompt: str, prompt: str, context: str = '') -> str:
         """
         Base method to generate a response using Azure OpenAI's chat completion.
         
@@ -50,25 +50,13 @@ class OpenAIService:
             max_tokens=self.max_tokens,
             temperature=self.temperature
         )
-        return response.choices[0].message.content.strip()
 
-    async def identify_conversation(self, user_question: str, conversations_context: str) -> str:
-        """
-        Identify which conversation the user is asking about.
-        
-        Args:
-            user_question: The user's question
-            conversations_context: JSON string of available conversations
-            
-        Returns:
-            str: The identified conversation ID
-        """
-        response = await self._generate_response(
-            system_prompt=SystemPrompts.CONVERSATION_IDENTIFIER,
-            prompt=user_question,
-            context=f"Channels and groups in the user's workspace:\n{conversations_context}"
-        )
-        return extract_conversation_id(response)
+        print(f"Response: {response}")
+        if not response.choices[0].message.content:
+            raise ValueError("No response from OpenAI")
+
+        print(f"Response Content: {response.choices[0].message.content}")
+        return response.choices[0].message.content.strip()
 
     async def analyze_conversation(self, user_question: str, conversation_messages: str) -> str:
         """

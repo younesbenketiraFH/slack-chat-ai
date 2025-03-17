@@ -5,7 +5,8 @@ Repository layer for Slack operations.
 import os
 import ssl
 import json
-from typing import List, Dict
+import re
+from typing import List, Dict, Set, Optional, Any
 from fastapi import HTTPException
 
 import certifi
@@ -104,13 +105,53 @@ class SlackRepository:
             )
 
     async def fetch_messages(self, channel_id: str, limit: int = 20) -> str:
-        """Fetch recent messages from a Slack channel."""
+        """
+        Fetch recent messages from a Slack channel and return user mappings and messages.
+        
+        Args:
+            channel_id: The ID of the channel to fetch messages from
+            limit: Maximum number of messages to fetch
+            
+        Returns:
+            Dict containing:
+                - users: Dict mapping user IDs to their display names
+                - messages: List of messages with sender IDs and original text
+        """
         try:
+            # Get messages from the channel
             response = self.client.conversations_history(channel=channel_id, limit=limit)
-            print(f"Response: {response}")
-            messages = [msg["text"] for msg in response["messages"] if "text" in msg]
-            print(f"Messages: {json.dumps(messages, indent=2)}")
-            return "\n".join(messages)
+            messages = response["messages"]
+            
+            # Extract all unique user IDs from messages (only message senders)
+            user_ids: Set[str] = set()
+            for msg in messages:
+                if "user" in msg:
+                    user_ids.add(msg["user"])
+            
+            # Get user info for all users
+            users_map = {}
+            for user_id in user_ids:
+                user_data = await self.get_user_info(user_id)
+                users_map[user_id] = user_data["display_name"]
+            
+            # Format messages to include only necessary information
+            formatted_messages = []
+            for msg in messages:
+                if "text" in msg and "user" in msg:
+                    formatted_messages.append({
+                        "user": msg["user"],
+                        "text": msg["text"],
+                        "ts": msg.get("ts", "")
+                    })
+            
+            result = {
+                "users": users_map,
+                "messages": formatted_messages
+            }
+            
+            print(f"Formatted Response: {json.dumps(result, indent=2)}")
+            return json.dumps(result)
+            
         except SlackApiError as e:
             print(f"Error fetching messages: {e.response['error']}")
             raise HTTPException(
@@ -124,7 +165,7 @@ class SlackRepository:
                 detail="An unexpected error occurred while fetching messages."
             )
 
-    async def send_message(self, channel_id: str, text: str, thread_ts: str = None) -> None:
+    async def send_message(self, channel_id: str = '', text: str = '', thread_ts: str = '') -> None:
         """Send a message to a Slack channel."""
         try:
             self.client.chat_postMessage(
