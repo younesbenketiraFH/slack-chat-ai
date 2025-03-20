@@ -62,12 +62,15 @@ async def handle_slack_commands(request: Request) -> Union[Dict[str, Any], JSONR
             if not response_url:
                 raise Exception("No response URL provided")
             
-            asyncio.create_task(slack_service.handle_summary(channel_id, response_url))
-
+            # Start the summary task
+            asyncio.create_task(slack_service.handle_summary(channel_id, response_url, None))
+            
+            # Send initial response
             return {
                 "response_type": "ephemeral",
                 "text": "⏳ Summarizing messages... I'll post the summary soon!"
             }
+
         case _:
             raise Exception(f"Unhandled command: {command}")
 
