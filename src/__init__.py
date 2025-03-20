@@ -13,4 +13,4 @@ from .models import *
 from .repositories import *
 from .services import *
 
-__all__ = ["SlackController", "SlackEventWrapper", "SlackUrlVerificationRequest", "SlackRequestPayload", "SlackRepository", "SlackService", "OpenAIService"]
+__all__ = ["SlackEventWrapper",  "SlackService", "OpenAIService"]

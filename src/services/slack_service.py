@@ -1,15 +1,8 @@
-"""
-Service layer for Slack operations.
-"""
-
 import ssl
-import json
-from typing import List, Dict, Any
-
 import certifi
 from slack_sdk import WebClient
 
-from src.models.slack_models import SlackEventWrapper, SlackUrlVerificationRequest
+from aiohttp import ClientSession
 from src.repositories.slack_repository import SlackRepository
 from src.services.openai_service import OpenAIService
 
@@ -20,57 +13,26 @@ class SlackService:
         self.slack_repository = slack_repository
         self.openai_service = openai_service
 
-    async def handle_url_verification(self, data: Dict[str, Any]) -> Dict[str, str]:
-        """Handle Slack URL verification challenge."""
-        verification_data = SlackUrlVerificationRequest(**data)
-        return {"challenge": verification_data.challenge}
+    async def handle_summary(self, channel_id: str, response_url: str) -> None:
+        """Handle the summary command."""
+        # Get messages from the channel
+        messages = await self.slack_repository.fetch_messages(channel_id)
+                
+        # Generate summary using OpenAI
+        summary = await self.openai_service.analyze_conversation(
+            conversation_messages=messages
+        )
 
-    async def handle_direct_message(self, event_data: SlackEventWrapper) -> None:
-        """Handle direct message events from Slack."""
-        channel_id = event_data.event.channel
-
-        if not channel_id:
-            print("No channel ID found in event data")
-            return
-        
-        if not event_data.event.ts:
-            print("No thread timestamp found in event data")
-            return
-        
-        if not event_data.event.text:
-            print("No text found in event data")
-            return
-
-        user_question = event_data.event.text.strip()
-        
-        # Example question: "38972 can you give me a summary of what X said?"
-        conversation_id = user_question.split(":")[0]
-
-        # Get all conversations for context
-        # all_conversations = await self.slack_repository.list_conversations()
-        # conversations_json = json.dumps(all_conversations, indent=2)
-        # # Identify which conversation the user is asking about
-        # conversation_id = await self.openai_service.identify_conversation(
-        #     user_question=user_question,
-        #     conversations_context=conversations_json
-        # )
-        # print(f"Identified Conversation ID: {conversation_id}")
-
-        # Get the messages from the identified conversation
-        conversation_messages = await self.slack_repository.fetch_messages(conversation_id)
-        print(f"Retrieved messages from conversation: {conversation_messages}")
-
-        # Generate the final response
-        # final_response = await self.openai_service.analyze_conversation(
-        #     user_question=user_question.split(":")[1],
-        #     conversation_messages=conversation_messages
-        # )
-        final_response = f"Here is the summary of the conversation:"
-        print(f"Final Response: {final_response}")
-
-        # Send the response back to the user
-        await self.slack_repository.send_message(
-            channel_id=channel_id,
-            text=final_response,
-            thread_ts=event_data.event.ts
-        ) 
+        # Send the response to the response_url
+        async with ClientSession() as session:
+            async with session.post(
+                response_url,
+                json={
+                    "response_type": "ephemeral",  # Only visible to the user who triggered the command
+                    "text": summary
+                },
+                headers={"Content-Type": "application/json"}
+            ) as resp:
+                if resp.status != 200:
+                    print(f"Error sending response to Slack: {await resp.text()}")
+                    raise Exception(f"Error sending response to Slack: {await resp.text()}")

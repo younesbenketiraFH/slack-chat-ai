@@ -29,18 +29,4 @@ class SlackEventWrapper(BaseModel):
     is_ext_shared_channel: Optional[bool] = None
     event_context: Optional[str] = None
 
-class SlackUrlVerificationRequest(BaseModel):
-    """Model for Slack URL verification requests."""
-    token: str
-    challenge: str
-    type: str
-
-class SlackRequestPayload(BaseModel):
-    """Model for general Slack request payloads."""
-    token: str
-    team_id: str
-    api_app_id: str
-    event: Dict[str, Any]
-    type: str
-    event_id: str
-    event_time: int 
+# Requests & Responses
