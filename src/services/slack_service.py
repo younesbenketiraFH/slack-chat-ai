@@ -16,8 +16,17 @@ class SlackService:
         )
         self.slack_repository = slack_repository
         self.openai_service = openai_service
+        
+    async def get_bot_user_channel_id(self, user_id: str) -> str:
+        """Create a group DM with the user and the bot."""
+        try:
+            result = self.client.conversations_open(users=[user_id])
+            return result["channel"]["id"]
+        except Exception as e:
+            print(f"Error creating group DM: {str(e)}")
+            raise e
 
-    async def handle_summary(self, channel_id: str, response_url: str, ts: str | None = None) -> None:
+    async def handle_summary(self, channel_id: str, user_id: str) -> None:
         """Handle the summary command."""
         try:
             # Get messages from the channel
@@ -28,25 +37,18 @@ class SlackService:
                 conversation_messages=messages
             )
 
-            # Update the ephemeral message using response_url
-            async with ClientSession() as session:
-                await session.post(
-                    response_url,
-                    json={
-                        "response_type": "ephemeral",
-                        "text": summary,
-                        "replace_original": True
-                    }
-                )
+            channel_id = await self.get_bot_user_channel_id(user_id)
+            # Also send the summary in the new DM
+            self.client.chat_postMessage(
+                channel=channel_id,
+                text=summary,
+                mrkdwn=True
+            )   
+
         except Exception as e:
             print(f"Error in handle_summary: {str(e)}")
             # If there's an error, update the message to show the error
-            async with ClientSession() as session:
-                await session.post(
-                    response_url,
-                    json={
-                        "response_type": "ephemeral",
-                        "text": f"❌ Error generating summary: {str(e)}",
-                        "replace_original": True
-                    }
-                )
+            self.client.chat_postMessage(
+                channel=channel_id,
+                text=f"Error: {str(e)}"
+            )

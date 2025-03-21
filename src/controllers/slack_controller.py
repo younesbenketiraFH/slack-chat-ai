@@ -25,6 +25,9 @@ async def handle_slack_events(request: Request) -> Union[Dict[str, Any], JSONRes
     # Get the raw body first to debug
     raw_data = await request.json()
     event_type = raw_data.get("type")
+
+    print(f"Received event type: {event_type}")
+    print(f"Raw data: {raw_data}")
     
     match event_type:
         case "url_verification":
@@ -62,16 +65,17 @@ async def handle_slack_commands(request: Request) -> Union[Dict[str, Any], JSONR
             if not response_url:
                 raise Exception("No response URL provided")
             
+            if not user_id:
+                raise Exception("No user ID provided")
+            
             # Start the summary task
-            asyncio.create_task(slack_service.handle_summary(channel_id, response_url, None))
+            asyncio.create_task(slack_service.handle_summary(channel_id, user_id))
             
             # Send initial response
             return {
                 "response_type": "ephemeral",
-                "text": "⏳ Summarizing messages... I'll post the summary soon!"
+                "text": "⏳ Summarizing messages... I'll send you the summary soon!"
             }
 
         case _:
             raise Exception(f"Unhandled command: {command}")
-
-

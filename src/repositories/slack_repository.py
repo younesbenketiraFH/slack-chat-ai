@@ -35,7 +35,7 @@ class SlackRepository:
             response = self.client.conversations_history(channel=channel_id, limit=limit)
             messages = response["messages"]
             
-            # Extract all unique user IDs from messages (only message senders)
+            # Extract all unique user IDs from messages
             user_ids: Set[str] = set()
             for msg in messages:
                 if "user" in msg:
@@ -47,22 +47,17 @@ class SlackRepository:
                 user_data = await self.get_user_info(user_id)
                 users_map[user_id] = user_data["display_name"]
             
-            # Format messages to include only necessary information
-            formatted_messages = []
-            for msg in messages:
+            # Format messages as a conversation string
+            conversation = []
+            # Reverse messages to show oldest first
+            for msg in reversed(messages):
                 if "text" in msg and "user" in msg:
-                    formatted_messages.append({
-                        "user": msg["user"],
-                        "text": msg["text"],
-                        "ts": msg.get("ts", "")
-                    })
+                    user_name = users_map.get(msg["user"], "Unknown")
+                    conversation.append(f"{user_name}: {msg['text']}")
             
-            result = {
-                "users": users_map,
-                "messages": formatted_messages
-            }
-            
-            return json.dumps(result)
+            # Join messages with newlines
+            return "\n".join(conversation)
+
         except SlackApiError as e:
             print(f"Error fetching messages: {e.response['error']}")
             raise HTTPException(
