@@ -30,12 +30,8 @@ class OpenAIService:
             A string containing the summary
         """
         try:
-            print("--------------------------------")
-            print(f"Conversation messages: {conversation_messages}")
-            print("--------------------------------")
             messages = prepare_messages(conversation_messages)
             
-            print(f"Messages: {messages}")
             response = await self.repository.create_chat_completion(
                 messages=messages,
                 max_tokens=self.max_tokens,
