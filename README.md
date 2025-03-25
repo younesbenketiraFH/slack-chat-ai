@@ -23,19 +23,29 @@ git clone https://github.com/yourusername/slack-chat-ai.git
 cd slack-chat-ai
 ```
 
-2. Install dependencies:
+2. Set up a virtual environment:
+```bash
+# Create a virtual environment
+python -m venv venv
+
+# Activate the virtual environment
+# On macOS/Linux:
+source venv/bin/activate
+```
+
+3. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Set up environment variables:
+4. Set up environment variables:
 Create a `.env` file in the root directory with:
 ```env
 SLACK_BOT_TOKEN=xoxb-your-bot-token
 OPENAI_API_KEY=your-openai-api-key
 ```
 
-4. Invite the bot to your workspace:
+5. Invite the bot to your workspace:
    - Go to your Slack workspace settings
    - Navigate to "Apps" → "Custom Integrations" → "Bots"
    - Add the bot to your workspace
