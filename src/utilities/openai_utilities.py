@@ -2,7 +2,7 @@
 Utility functions and constants for OpenAI operations.
 """
 
-from typing import List
+from typing import List, Dict, Any
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionSystemMessageParam, ChatCompletionUserMessageParam
 
 class SystemPrompts:
@@ -90,3 +90,21 @@ def prepare_messages(messages: str) -> List[ChatCompletionMessageParam]:
     }
     
     return [system, user]
+
+def _extract_content_from_dict(choice_dict: Dict[str, Any]) -> str:
+    """
+    Extract content from response when it's in dictionary format.
+    
+    Args:
+        choice_dict: Dictionary representation of a choice
+        
+    Returns:
+        Content string or error message
+    """
+    try:
+        if isinstance(choice_dict, dict):
+            if 'message' in choice_dict and 'content' in choice_dict['message']:
+                return choice_dict['message']['content']
+        return "Content could not be extracted from response format."
+    except Exception as e:
+        return f"Error extracting content: {str(e)}"
